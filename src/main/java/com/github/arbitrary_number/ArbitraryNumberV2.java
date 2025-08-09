@@ -1,15 +1,13 @@
 package com.github.arbitrary_number;
 
-import org.json.JSONArray;
-import org.json.JSONObject;
-
-import com.github.arbitrary_number.ArbitraryNumberV2Alpha.Op;
-
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.MathContext;
 import java.util.ArrayList;
 import java.util.List;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 public class ArbitraryNumberV2 {
     enum Operation {
@@ -67,15 +65,36 @@ public class ArbitraryNumberV2 {
         return n;
     }
 
-
-
-    private static ArbitraryNumberV2 node(Operation op, ArbitraryNumberV2... nodes) {
+    public static ArbitraryNumberV2 node(Operation op, ArbitraryNumberV2... nodes) {
         ArbitraryNumberV2 n = new ArbitraryNumberV2();
         n.op = op;
         for (ArbitraryNumberV2 c : nodes) {
             n.children.add(c);
         }
         return n;
+    }
+
+    public static ArbitraryNumberV2 negate(ArbitraryNumberV2 number) {
+        // Create a TERM node representing -1
+        ArbitraryNumberV2 negativeOne = term(BigInteger.valueOf(-1), BigInteger.ONE, BigInteger.ONE);
+        // Multiply -1 by the input number
+        return multiply(negativeOne, number);
+    }
+
+    // Log with base: log_base(argument)
+    public static ArbitraryNumberV2 log(ArbitraryNumberV2 base, ArbitraryNumberV2 argument) {
+        // Represent as: log(argument) / log(base)
+        ArbitraryNumberV2 logArg = log(argument);
+        ArbitraryNumberV2 logBase = log(base);
+        return divide(logArg, logBase);
+    }
+
+    // Overload for convenience: log(baseNumerator/baseDenominator, argNumerator/argDenominator)
+    public static ArbitraryNumberV2 log(BigInteger baseNumerator, BigInteger baseDenominator,
+                                        BigInteger argNumerator, BigInteger argDenominator) {
+        ArbitraryNumberV2 base = term(BigInteger.ONE, baseNumerator, baseDenominator);
+        ArbitraryNumberV2 arg = term(BigInteger.ONE, argNumerator, argDenominator);
+        return log(base, arg);
     }
 
     // Evaluate to a BigDecimal (approximate)
@@ -115,6 +134,155 @@ public class ArbitraryNumberV2 {
             default -> throw new UnsupportedOperationException("Unknown op: " + op);
         }
     }
+
+    public ArbitraryNumberV2 differentiate(String variableName) {
+        switch (op) {
+            case TERM -> {
+                // Constants have zero derivative
+                return term(BigInteger.ZERO, BigInteger.ONE, BigInteger.ONE);
+            }
+            case VARIABLE -> {
+                // d(x)/dx = 1
+                return variableName.equals(this.variableName)
+                        ? term(BigInteger.ONE, BigInteger.ONE, BigInteger.ONE)
+                        : term(BigInteger.ZERO, BigInteger.ONE, BigInteger.ONE);
+            }
+            case ADD -> {
+                return add(children.get(0).differentiate(variableName), children.get(1).differentiate(variableName));
+            }
+            case SUBTRACT -> {
+                return subtract(children.get(0).differentiate(variableName), children.get(1).differentiate(variableName));
+            }
+            case MULTIPLY -> {
+                // Product rule: u'v + uv'
+                ArbitraryNumberV2 u = children.get(0);
+                ArbitraryNumberV2 v = children.get(1);
+                return add(
+                        multiply(u.differentiate(variableName), v),
+                        multiply(u, v.differentiate(variableName))
+                );
+            }
+            case DIVIDE -> {
+                // Quotient rule: (u'v - uv') / v²
+                ArbitraryNumberV2 u = children.get(0);
+                ArbitraryNumberV2 v = children.get(1);
+                return divide(
+                        subtract(
+                                multiply(u.differentiate(variableName), v),
+                                multiply(u, v.differentiate(variableName))
+                        ),
+                        power(v, term(BigInteger.valueOf(2), BigInteger.ONE, BigInteger.ONE))
+                );
+            }
+            case POWER -> {
+                // Assume exponent is constant for now
+                ArbitraryNumberV2 base = children.get(0);
+                ArbitraryNumberV2 exp = children.get(1);
+
+                ArbitraryNumberV2 one = term(BigInteger.ONE, BigInteger.ONE, BigInteger.ONE);
+                ArbitraryNumberV2 expMinusOne = subtract(exp, one);
+                return multiply(
+                        multiply(exp, power(base, expMinusOne)),
+                        base.differentiate(variableName)
+                );
+            }
+            case LOG -> {
+                ArbitraryNumberV2 u = children.get(0);
+                return divide(u.differentiate(variableName), u);
+            }
+            default -> throw new UnsupportedOperationException("Differentiation not implemented for op: " + op);
+        }
+    }
+
+    public ArbitraryNumberV2 symbolicGrad(ArbitraryNumberV2 inputVar) {
+        switch (op) {
+            case TERM -> {
+                // Gradient is 1 if this term == inputVar else 0
+                return this.equals(inputVar) ? term(BigInteger.ONE, BigInteger.ONE, BigInteger.ONE)
+                                            : term(BigInteger.ZERO, BigInteger.ONE, BigInteger.ONE);
+            }
+            case VARIABLE -> {
+                // Gradient is 1 if variableName matches inputVar's variableName
+                if (this.op == Operation.VARIABLE && inputVar.op == Operation.VARIABLE) {
+                    return this.variableName.equals(inputVar.variableName) ?
+                        term(BigInteger.ONE, BigInteger.ONE, BigInteger.ONE) :
+                        term(BigInteger.ZERO, BigInteger.ONE, BigInteger.ONE);
+                } else {
+                    return term(BigInteger.ZERO, BigInteger.ONE, BigInteger.ONE);
+                }
+            }
+            case ADD -> {
+                return add(children.get(0).symbolicGrad(inputVar), children.get(1).symbolicGrad(inputVar));
+            }
+            case SUBTRACT -> {
+                return subtract(children.get(0).symbolicGrad(inputVar), children.get(1).symbolicGrad(inputVar));
+            }
+            case MULTIPLY -> {
+                ArbitraryNumberV2 left = children.get(0);
+                ArbitraryNumberV2 right = children.get(1);
+                ArbitraryNumberV2 leftGrad = left.symbolicGrad(inputVar);
+                ArbitraryNumberV2 rightGrad = right.symbolicGrad(inputVar);
+                return add(multiply(leftGrad, right), multiply(left, rightGrad));
+            }
+            case DIVIDE -> {
+                ArbitraryNumberV2 left = children.get(0);
+                ArbitraryNumberV2 right = children.get(1);
+                ArbitraryNumberV2 leftGrad = left.symbolicGrad(inputVar);
+                ArbitraryNumberV2 rightGrad = right.symbolicGrad(inputVar);
+                ArbitraryNumberV2 numerator = subtract(multiply(leftGrad, right), multiply(left, rightGrad));
+                ArbitraryNumberV2 denominator = power(right, term(BigInteger.TWO, BigInteger.ONE, BigInteger.ONE));
+                return divide(numerator, denominator);
+            }
+            case POWER -> {
+                ArbitraryNumberV2 base = children.get(0);
+                ArbitraryNumberV2 exp = children.get(1);
+                ArbitraryNumberV2 baseGrad = base.symbolicGrad(inputVar);
+                ArbitraryNumberV2 expGrad = exp.symbolicGrad(inputVar);
+
+                // f^g * (g' * ln(f) + g * f'/f)
+                ArbitraryNumberV2 lnBase = log(base);
+                ArbitraryNumberV2 term1 = multiply(expGrad, lnBase);
+                ArbitraryNumberV2 term2 = multiply(exp, divide(baseGrad, base));
+                ArbitraryNumberV2 inside = add(term1, term2);
+
+                return multiply(this, inside); // this = f^g
+            }
+            case LOG -> {
+                ArbitraryNumberV2 arg = children.get(0);
+                ArbitraryNumberV2 argGrad = arg.symbolicGrad(inputVar);
+                return divide(argGrad, arg);
+            }
+            default -> {
+                throw new UnsupportedOperationException("Grad not supported for op: " + op);
+            }
+        }
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) return true;
+        if (obj == null || getClass() != obj.getClass()) return false;
+
+        ArbitraryNumberV2 other = (ArbitraryNumberV2) obj;
+
+        if (this.op != other.op) return false;
+
+        switch (this.op) {
+            case TERM:
+                return this.coefficient.equals(other.coefficient) &&
+                       this.numerator.equals(other.numerator) &&
+                       this.denominator.equals(other.denominator);
+            case VARIABLE:
+                return this.variableName != null && this.variableName.equals(other.variableName);
+            default:
+                if (this.children.size() != other.children.size()) return false;
+                for (int i = 0; i < this.children.size(); i++) {
+                    if (!this.children.get(i).equals(other.children.get(i))) return false;
+                }
+                return true;
+        }
+    }
+
 
     // ✅ Recursively convert full AST to JSON
     public JSONObject toJson() {
