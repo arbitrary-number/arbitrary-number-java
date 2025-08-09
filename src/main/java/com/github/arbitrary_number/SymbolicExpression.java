@@ -5,6 +5,7 @@ import java.math.BigInteger;
 import java.math.MathContext;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -97,6 +98,43 @@ public class SymbolicExpression {
         return log(base, arg);
     }
 
+    // Method to compute symbolic derivative with respect to a given variable
+    public SymbolicExpression differentiate(String variableName) {
+        switch (op) {
+            case TERM:
+                // Constants have zero derivative
+                return term(BigInteger.ZERO, BigInteger.ONE, BigInteger.ONE);
+            case VARIABLE:
+                // d(x)/dx = 1
+                return variableName.equals(this.variableName)
+                        ? term(BigInteger.ONE, BigInteger.ONE, BigInteger.ONE)
+                        : term(BigInteger.ZERO, BigInteger.ONE, BigInteger.ONE);
+            case ADD:
+                return add(children.get(0).differentiate(variableName),
+                           children.get(1).differentiate(variableName));
+            case SUBTRACT:
+                return subtract(children.get(0).differentiate(variableName),
+                                children.get(1).differentiate(variableName));
+            case MULTIPLY:
+                return add(multiply(children.get(0).differentiate(variableName), children.get(1)),
+                           multiply(children.get(0), children.get(1).differentiate(variableName)));
+            case DIVIDE:
+                return divide(
+                        subtract(multiply(children.get(0).differentiate(variableName), children.get(1)),
+                                 multiply(children.get(0), children.get(1).differentiate(variableName))),
+                        multiply(children.get(1), children.get(1)));
+            case POWER:
+                SymbolicExpression base = children.get(0);
+                SymbolicExpression exp = children.get(1);
+                SymbolicExpression baseDerivative = base.differentiate(variableName);
+                return multiply(multiply(exp, power(base, subtract(exp, term(BigInteger.ONE, BigInteger.ONE, BigInteger.ONE)))), baseDerivative);
+            case LOG:
+                return divide(children.get(0).differentiate(variableName), children.get(0));
+            default:
+                throw new UnsupportedOperationException("Unknown operation: " + op);
+        }
+    }
+
     // Evaluate to a BigDecimal (approximate)
     public BigDecimal evaluate(int precision) {
         MathContext mc = new MathContext(precision);
@@ -135,6 +173,44 @@ public class SymbolicExpression {
         }
     }
 
+    // Method to evaluate the derivative with specific variable values
+    public double evaluateDerivative(Map<String, Double> variableValues, String variableName) {
+        // First, differentiate the expression
+        SymbolicExpression derivative = this.differentiate(variableName);
+
+        // Then, evaluate the derivative
+        return derivative.evaluate(variableValues);
+    }
+
+    // Method to evaluate symbolic expression with variable assignments
+    public double evaluate(Map<String, Double> variableValues) {
+        switch (op) {
+            case TERM:
+                return coefficient.doubleValue() * (numerator.doubleValue() / denominator.doubleValue());
+            case VARIABLE:
+                if (variableValues.containsKey(variableName)) {
+                    return variableValues.get(variableName);
+                } else {
+                    throw new IllegalArgumentException("Variable " + variableName + " not provided in evaluation map.");
+                }
+            case ADD:
+                return children.get(0).evaluate(variableValues) + children.get(1).evaluate(variableValues);
+            case SUBTRACT:
+                return children.get(0).evaluate(variableValues) - children.get(1).evaluate(variableValues);
+            case MULTIPLY:
+                return children.get(0).evaluate(variableValues) * children.get(1).evaluate(variableValues);
+            case DIVIDE:
+                return children.get(0).evaluate(variableValues) / children.get(1).evaluate(variableValues);
+            case POWER:
+                return Math.pow(children.get(0).evaluate(variableValues), children.get(1).evaluate(variableValues));
+            case LOG:
+                return Math.log(children.get(0).evaluate(variableValues));
+            default:
+                throw new UnsupportedOperationException("Unknown operation: " + op);
+        }
+    }
+
+    // Method to simplify the expression
     public SymbolicExpression simplify() {
         switch (op) {
             case TERM:
@@ -196,194 +272,44 @@ public class SymbolicExpression {
                n.numerator.equals(BigInteger.ONE) && n.denominator.equals(BigInteger.ONE);
     }
 
-
-    public SymbolicExpression differentiate(String variableName) {
-        switch (op) {
-            case TERM -> {
-                // Constants have zero derivative
-                return term(BigInteger.ZERO, BigInteger.ONE, BigInteger.ONE);
-            }
-            case VARIABLE -> {
-                // d(x)/dx = 1
-                return variableName.equals(this.variableName)
-                        ? term(BigInteger.ONE, BigInteger.ONE, BigInteger.ONE)
-                        : term(BigInteger.ZERO, BigInteger.ONE, BigInteger.ONE);
-            }
-            case ADD -> {
-                return add(children.get(0).differentiate(variableName), children.get(1).differentiate(variableName));
-            }
-            case SUBTRACT -> {
-                return subtract(children.get(0).differentiate(variableName), children.get(1).differentiate(variableName));
-            }
-            case MULTIPLY -> {
-                // Product rule: u'v + uv'
-                SymbolicExpression u = children.get(0);
-                SymbolicExpression v = children.get(1);
-                return add(
-                        multiply(u.differentiate(variableName), v),
-                        multiply(u, v.differentiate(variableName))
-                );
-            }
-            case DIVIDE -> {
-                // Quotient rule: (u'v - uv') / v²
-                SymbolicExpression u = children.get(0);
-                SymbolicExpression v = children.get(1);
-                return divide(
-                        subtract(
-                                multiply(u.differentiate(variableName), v),
-                                multiply(u, v.differentiate(variableName))
-                        ),
-                        power(v, term(BigInteger.valueOf(2), BigInteger.ONE, BigInteger.ONE))
-                );
-            }
-            case POWER -> {
-                // Assume exponent is constant for now
-                SymbolicExpression base = children.get(0);
-                SymbolicExpression exp = children.get(1);
-
-                SymbolicExpression one = term(BigInteger.ONE, BigInteger.ONE, BigInteger.ONE);
-                SymbolicExpression expMinusOne = subtract(exp, one);
-                return multiply(
-                        multiply(exp, power(base, expMinusOne)),
-                        base.differentiate(variableName)
-                );
-            }
-            case LOG -> {
-                SymbolicExpression u = children.get(0);
-                return divide(u.differentiate(variableName), u);
-            }
-            default -> throw new UnsupportedOperationException("Differentiation not implemented for op: " + op);
-        }
-    }
-
-    public SymbolicExpression symbolicGrad(SymbolicExpression inputVar) {
-        switch (op) {
-            case TERM -> {
-                // Gradient is 1 if this term == inputVar else 0
-                return this.equals(inputVar) ? term(BigInteger.ONE, BigInteger.ONE, BigInteger.ONE)
-                                            : term(BigInteger.ZERO, BigInteger.ONE, BigInteger.ONE);
-            }
-            case VARIABLE -> {
-                // Gradient is 1 if variableName matches inputVar's variableName
-                if (this.op == Operation.VARIABLE && inputVar.op == Operation.VARIABLE) {
-                    return this.variableName.equals(inputVar.variableName) ?
-                        term(BigInteger.ONE, BigInteger.ONE, BigInteger.ONE) :
-                        term(BigInteger.ZERO, BigInteger.ONE, BigInteger.ONE);
-                } else {
-                    return term(BigInteger.ZERO, BigInteger.ONE, BigInteger.ONE);
-                }
-            }
-            case ADD -> {
-                return add(children.get(0).symbolicGrad(inputVar), children.get(1).symbolicGrad(inputVar));
-            }
-            case SUBTRACT -> {
-                return subtract(children.get(0).symbolicGrad(inputVar), children.get(1).symbolicGrad(inputVar));
-            }
-            case MULTIPLY -> {
-                SymbolicExpression left = children.get(0);
-                SymbolicExpression right = children.get(1);
-                SymbolicExpression leftGrad = left.symbolicGrad(inputVar);
-                SymbolicExpression rightGrad = right.symbolicGrad(inputVar);
-                return add(multiply(leftGrad, right), multiply(left, rightGrad));
-            }
-            case DIVIDE -> {
-                SymbolicExpression left = children.get(0);
-                SymbolicExpression right = children.get(1);
-                SymbolicExpression leftGrad = left.symbolicGrad(inputVar);
-                SymbolicExpression rightGrad = right.symbolicGrad(inputVar);
-                SymbolicExpression numerator = subtract(multiply(leftGrad, right), multiply(left, rightGrad));
-                SymbolicExpression denominator = power(right, term(BigInteger.TWO, BigInteger.ONE, BigInteger.ONE));
-                return divide(numerator, denominator);
-            }
-            case POWER -> {
-                SymbolicExpression base = children.get(0);
-                SymbolicExpression exp = children.get(1);
-                SymbolicExpression baseGrad = base.symbolicGrad(inputVar);
-                SymbolicExpression expGrad = exp.symbolicGrad(inputVar);
-
-                // f^g * (g' * ln(f) + g * f'/f)
-                SymbolicExpression lnBase = log(base);
-                SymbolicExpression term1 = multiply(expGrad, lnBase);
-                SymbolicExpression term2 = multiply(exp, divide(baseGrad, base));
-                SymbolicExpression inside = add(term1, term2);
-
-                return multiply(this, inside); // this = f^g
-            }
-            case LOG -> {
-                SymbolicExpression arg = children.get(0);
-                SymbolicExpression argGrad = arg.symbolicGrad(inputVar);
-                return divide(argGrad, arg);
-            }
-            default -> {
-                throw new UnsupportedOperationException("Grad not supported for op: " + op);
-            }
-        }
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-        if (this == obj) return true;
-        if (obj == null || getClass() != obj.getClass()) return false;
-
-        SymbolicExpression other = (SymbolicExpression) obj;
-
-        if (this.op != other.op) return false;
-
-        switch (this.op) {
-            case TERM:
-                return this.coefficient.equals(other.coefficient) &&
-                       this.numerator.equals(other.numerator) &&
-                       this.denominator.equals(other.denominator);
-            case VARIABLE:
-                return this.variableName != null && this.variableName.equals(other.variableName);
-            default:
-                if (this.children.size() != other.children.size()) return false;
-                for (int i = 0; i < this.children.size(); i++) {
-                    if (!this.children.get(i).equals(other.children.get(i))) return false;
-                }
-                return true;
-        }
-    }
-
-
-    // ✅ Recursively convert full AST to JSON
     public JSONObject toJson() {
         JSONObject json = new JSONObject();
-
-        json.put("op", op.toString());
-
-        switch (op) {
-            case TERM -> {
-                json.put("coefficient", coefficient.toString());
-                json.put("numerator", numerator.toString());
-                json.put("denominator", denominator.toString());
+        json.put("operation", op.name());
+        json.put("coefficient", coefficient.toString());
+        json.put("numerator", numerator.toString());
+        json.put("denominator", denominator.toString());
+        if (variableName != null) json.put("variable", variableName);
+        if (!children.isEmpty()) {
+            JSONArray childrenArray = new JSONArray();
+            for (SymbolicExpression child : children) {
+                childrenArray.put(child.toJson());
             }
-            case VARIABLE -> {
-                json.put("name", variableName);
-            }
-            default -> {
-                JSONArray args = new JSONArray();
-                for (SymbolicExpression c : children) {
-                    args.put(c.toJson()); // recursive call
-                }
-                json.put("args", args);
-            }
+            json.put("children", childrenArray);
         }
-
         return json;
     }
 
     @Override
     public String toString() {
-        return switch (op) {
-            case TERM -> coefficient + "*(" + numerator + "/" + denominator + ")";
-            case VARIABLE -> variableName;
-            case ADD -> "(" + children.get(0) + " + " + children.get(1) + ")";
-            case SUBTRACT -> "(" + children.get(0) + " - " + children.get(1) + ")";
-            case MULTIPLY -> "(" + children.get(0) + " * " + children.get(1) + ")";
-            case DIVIDE -> "(" + children.get(0) + " / " + children.get(1) + ")";
-            case POWER -> "(" + children.get(0) + " ^ " + children.get(1) + ")";
-            case LOG -> "log(" + children.get(0) + ")";
-        };
+        switch (op) {
+            case TERM:
+                return coefficient + " * (" + numerator + "/" + denominator + ")";
+            case VARIABLE:
+                return variableName;
+            case ADD:
+                return "(" + children.get(0) + " + " + children.get(1) + ")";
+            case SUBTRACT:
+                return "(" + children.get(0) + " - " + children.get(1) + ")";
+            case MULTIPLY:
+                return "(" + children.get(0) + " * " + children.get(1) + ")";
+            case DIVIDE:
+                return "(" + children.get(0) + " / " + children.get(1) + ")";
+            case POWER:
+                return "(" + children.get(0) + " ^ " + children.get(1) + ")";
+            case LOG:
+                return "log(" + children.get(0) + ")";
+            default:
+                return "Unknown operation";
+        }
     }
 }

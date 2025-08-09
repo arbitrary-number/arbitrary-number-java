@@ -318,6 +318,14 @@ public class ArbitraryNumberV2 {
         }
     }
 
+    public static ArbitraryNumberV2 exp(ArbitraryNumberV2 exponent) {
+        // Approximate e ≈ 2.718281828459045235 with 18 decimal places
+        BigInteger eNumerator = new BigInteger("2718281828459045235");
+        BigInteger eDenominator = new BigInteger("1000000000000000000");
+        ArbitraryNumberV2 eTerm = term(BigInteger.ONE, eNumerator, eDenominator);
+        return power(eTerm, exponent);
+    }
+
 
     // ✅ Recursively convert full AST to JSON
     public JSONObject toJson() {
