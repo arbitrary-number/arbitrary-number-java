@@ -9,29 +9,29 @@ import static org.junit.jupiter.api.Assertions.*;
 public class CollatzTest2 {
 
     // Helper: isEven
-    private boolean isEven(ArbitraryNumberV2 n) {
+    private boolean isEven(SymbolicExpression n) {
         return n.numerator.mod(BigInteger.TWO).equals(BigInteger.ZERO);
     }
 
     // Compute next Collatz step for term only
-    private ArbitraryNumberV2 collatzStep(ArbitraryNumberV2 n) {
-        if (n.op != ArbitraryNumberV2.Operation.TERM) {
+    private SymbolicExpression collatzStep(SymbolicExpression n) {
+        if (n.op != SymbolicExpression.Operation.TERM) {
             throw new IllegalArgumentException("collatzStep only supports TERM nodes");
         }
         BigInteger val = n.coefficient.multiply(n.numerator).divide(n.denominator);
         if (val.mod(BigInteger.TWO).equals(BigInteger.ZERO)) {
             // even: n / 2
-            return ArbitraryNumberV2.term(BigInteger.ONE, val.divide(BigInteger.TWO), BigInteger.ONE);
+            return SymbolicExpression.term(BigInteger.ONE, val.divide(BigInteger.TWO), BigInteger.ONE);
         } else {
             // odd: 3n + 1
             BigInteger threeNPlusOne = val.multiply(BigInteger.valueOf(3)).add(BigInteger.ONE);
-            return ArbitraryNumberV2.term(BigInteger.ONE, threeNPlusOne, BigInteger.ONE);
+            return SymbolicExpression.term(BigInteger.ONE, threeNPlusOne, BigInteger.ONE);
         }
     }
 
     @Test
     public void testCollatzSequence() {
-        ArbitraryNumberV2 start = ArbitraryNumberV2.term(BigInteger.ONE, BigInteger.valueOf(7), BigInteger.ONE);
+        SymbolicExpression start = SymbolicExpression.term(BigInteger.ONE, BigInteger.valueOf(7), BigInteger.ONE);
 
         // Expected Collatz sequence starting at 7: 7, 22, 11, 34, 17, 52, 26, 13, 40, 20, 10, 5, 16, 8, 4, 2, 1
         BigInteger[] expected = {
@@ -41,7 +41,7 @@ public class CollatzTest2 {
             BigInteger.valueOf(16), BigInteger.valueOf(8), BigInteger.valueOf(4), BigInteger.valueOf(2), BigInteger.ONE
         };
 
-        ArbitraryNumberV2 current = start;
+        SymbolicExpression current = start;
         for (BigInteger val : expected) {
             BigInteger currentVal = current.coefficient.multiply(current.numerator).divide(current.denominator);
             assertEquals(val, currentVal, "Collatz step value mismatch");
@@ -53,20 +53,20 @@ public class CollatzTest2 {
     @Test
     public void testSymbolicCollatzStep() {
         // Variable n
-        ArbitraryNumberV2 n = ArbitraryNumberV2.variable("n");
+        SymbolicExpression n = SymbolicExpression.variable("n");
 
         // Expression for Collatz step (symbolic): if n even -> n/2 else 3n + 1
         // We'll just build the two branches symbolically
 
         // n / 2 (exact fraction)
-        ArbitraryNumberV2 half = ArbitraryNumberV2.term(BigInteger.ONE, BigInteger.ONE, BigInteger.valueOf(2));
-        ArbitraryNumberV2 nDiv2 = ArbitraryNumberV2.multiply(n, half);
+        SymbolicExpression half = SymbolicExpression.term(BigInteger.ONE, BigInteger.ONE, BigInteger.valueOf(2));
+        SymbolicExpression nDiv2 = SymbolicExpression.multiply(n, half);
 
         // 3n + 1
-        ArbitraryNumberV2 three = ArbitraryNumberV2.term(BigInteger.valueOf(3), BigInteger.ONE, BigInteger.ONE);
-        ArbitraryNumberV2 threeN = ArbitraryNumberV2.multiply(three, n);
-        ArbitraryNumberV2 one = ArbitraryNumberV2.term(BigInteger.ONE, BigInteger.ONE, BigInteger.ONE);
-        ArbitraryNumberV2 threeNplus1 = ArbitraryNumberV2.add(threeN, one);
+        SymbolicExpression three = SymbolicExpression.term(BigInteger.valueOf(3), BigInteger.ONE, BigInteger.ONE);
+        SymbolicExpression threeN = SymbolicExpression.multiply(three, n);
+        SymbolicExpression one = SymbolicExpression.term(BigInteger.ONE, BigInteger.ONE, BigInteger.ONE);
+        SymbolicExpression threeNplus1 = SymbolicExpression.add(threeN, one);
 
         // Output expressions for each branch
         System.out.println("Collatz step if even: " + nDiv2);
@@ -74,15 +74,15 @@ public class CollatzTest2 {
 
         // Now build an expression for symbolic iteration: f(n) = 3n + 1 (odd)
         // Next step: f(f(n))
-        ArbitraryNumberV2 secondStep = threeNplus1;  // just alias to simplify
+        SymbolicExpression secondStep = threeNplus1;  // just alias to simplify
 
         // Test symbolic differentiation on 3n + 1 (should be 3)
-        ArbitraryNumberV2 derivative = threeNplus1.differentiate("n");
+        SymbolicExpression derivative = threeNplus1.differentiate("n");
         System.out.println("Derivative of 3n + 1 w.r.t n: " + derivative);
 
-        ArbitraryNumberV2 result = derivative.simplify();
+        SymbolicExpression result = derivative.simplify();
 
-        assertEquals(ArbitraryNumberV2.term(BigInteger.valueOf(3), BigInteger.ONE, BigInteger.ONE), result);
+        assertEquals(SymbolicExpression.term(BigInteger.valueOf(3), BigInteger.ONE, BigInteger.ONE), result);
     }
 
 }
