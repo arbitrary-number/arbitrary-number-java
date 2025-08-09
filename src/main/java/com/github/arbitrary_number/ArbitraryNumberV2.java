@@ -135,6 +135,68 @@ public class ArbitraryNumberV2 {
         }
     }
 
+    public ArbitraryNumberV2 simplify() {
+        switch (op) {
+            case TERM:
+            case VARIABLE:
+                return this; // already simplest
+            case ADD: {
+                ArbitraryNumberV2 left = children.get(0).simplify();
+                ArbitraryNumberV2 right = children.get(1).simplify();
+                // if left == 0 return right
+                if (isZero(left)) return right;
+                // if right == 0 return left
+                if (isZero(right)) return left;
+                // if both terms are TERM, combine coefficients if possible (optional)
+                return add(left, right);
+            }
+            case SUBTRACT: {
+                ArbitraryNumberV2 left = children.get(0).simplify();
+                ArbitraryNumberV2 right = children.get(1).simplify();
+                if (isZero(right)) return left;
+                return subtract(left, right);
+            }
+            case MULTIPLY: {
+                ArbitraryNumberV2 left = children.get(0).simplify();
+                ArbitraryNumberV2 right = children.get(1).simplify();
+                if (isZero(left) || isZero(right)) return term(BigInteger.ZERO, BigInteger.ONE, BigInteger.ONE);
+                if (isOne(left)) return right;
+                if (isOne(right)) return left;
+                return multiply(left, right);
+            }
+            case DIVIDE: {
+                ArbitraryNumberV2 left = children.get(0).simplify();
+                ArbitraryNumberV2 right = children.get(1).simplify();
+                if (isZero(left)) return term(BigInteger.ZERO, BigInteger.ONE, BigInteger.ONE);
+                if (isOne(right)) return left;
+                return divide(left, right);
+            }
+            case POWER: {
+                ArbitraryNumberV2 base = children.get(0).simplify();
+                ArbitraryNumberV2 exp = children.get(1).simplify();
+                if (isZero(exp)) return term(BigInteger.ONE, BigInteger.ONE, BigInteger.ONE);
+                if (isOne(exp)) return base;
+                return power(base, exp);
+            }
+            case LOG: {
+                ArbitraryNumberV2 arg = children.get(0).simplify();
+                return log(arg);
+            }
+            default:
+                return this;
+        }
+    }
+
+    private boolean isZero(ArbitraryNumberV2 n) {
+        return n.op == Operation.TERM && n.coefficient.equals(BigInteger.ZERO);
+    }
+
+    private boolean isOne(ArbitraryNumberV2 n) {
+        return n.op == Operation.TERM && n.coefficient.equals(BigInteger.ONE) &&
+               n.numerator.equals(BigInteger.ONE) && n.denominator.equals(BigInteger.ONE);
+    }
+
+
     public ArbitraryNumberV2 differentiate(String variableName) {
         switch (op) {
             case TERM -> {
