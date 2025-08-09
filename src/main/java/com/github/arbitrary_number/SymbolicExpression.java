@@ -173,16 +173,7 @@ public class SymbolicExpression {
         }
     }
 
-    // Method to evaluate the derivative with specific variable values
-    public double evaluateDerivative(Map<String, Double> variableValues, String variableName) {
-        // First, differentiate the expression
-        SymbolicExpression derivative = this.differentiate(variableName);
-
-        // Then, evaluate the derivative
-        return derivative.evaluate(variableValues);
-    }
-
-    // Method to evaluate symbolic expression with variable assignments
+    // Evaluate the symbolic expression for given variable values
     public double evaluate(Map<String, Double> variableValues) {
         switch (op) {
             case TERM:
@@ -191,7 +182,7 @@ public class SymbolicExpression {
                 if (variableValues.containsKey(variableName)) {
                     return variableValues.get(variableName);
                 } else {
-                    throw new IllegalArgumentException("Variable " + variableName + " not provided in evaluation map.");
+                    throw new IllegalArgumentException("Variable " + variableName + " not found in evaluation map.");
                 }
             case ADD:
                 return children.get(0).evaluate(variableValues) + children.get(1).evaluate(variableValues);
@@ -210,20 +201,23 @@ public class SymbolicExpression {
         }
     }
 
-    // Method to simplify the expression
+    // Evaluate the derivative for given variable values
+    public double evaluateDerivative(Map<String, Double> variableValues, String variableName) {
+        SymbolicExpression derivative = this.differentiate(variableName);
+        return derivative.evaluate(variableValues);
+    }
+
+    // Simplify the expression to remove trivial operations
     public SymbolicExpression simplify() {
         switch (op) {
             case TERM:
             case VARIABLE:
-                return this; // already simplest
+                return this;
             case ADD: {
                 SymbolicExpression left = children.get(0).simplify();
                 SymbolicExpression right = children.get(1).simplify();
-                // if left == 0 return right
                 if (isZero(left)) return right;
-                // if right == 0 return left
                 if (isZero(right)) return left;
-                // if both terms are TERM, combine coefficients if possible (optional)
                 return add(left, right);
             }
             case SUBTRACT: {
@@ -263,6 +257,7 @@ public class SymbolicExpression {
         }
     }
 
+    // Helper methods for simplification
     private boolean isZero(SymbolicExpression n) {
         return n.op == Operation.TERM && n.coefficient.equals(BigInteger.ZERO);
     }
@@ -272,6 +267,11 @@ public class SymbolicExpression {
                n.numerator.equals(BigInteger.ONE) && n.denominator.equals(BigInteger.ONE);
     }
 
+    // Differentiation (same as before)...
+
+    // Symbolic gradient (same as before)...
+
+    // Convert expression to JSON
     public JSONObject toJson() {
         JSONObject json = new JSONObject();
         json.put("operation", op.name());
