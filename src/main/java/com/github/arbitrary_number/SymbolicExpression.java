@@ -173,7 +173,113 @@ public class SymbolicExpression {
         }
     }
 
-    // Evaluate the symbolic expression for given variable values
+
+
+    // Evaluate the derivative for given variable values
+    public double evaluateDerivative(Map<String, Double> variableValues, String variableName) {
+        SymbolicExpression derivative = this.differentiate(variableName);
+        return derivative.evaluate(variableValues);
+    }
+
+
+    // Differentiation (same as before)...
+
+    // Symbolic gradient (same as before)...
+
+    // Convert expression to JSON
+    public JSONObject toJson() {
+        JSONObject json = new JSONObject();
+        json.put("operation", op.name());
+        json.put("coefficient", coefficient.toString());
+        json.put("numerator", numerator.toString());
+        json.put("denominator", denominator.toString());
+        if (variableName != null) json.put("variable", variableName);
+        if (!children.isEmpty()) {
+            JSONArray childrenArray = new JSONArray();
+            for (SymbolicExpression child : children) {
+                childrenArray.put(child.toJson());
+            }
+            json.put("children", childrenArray);
+        }
+        return json;
+    }
+
+    private boolean isZero(SymbolicExpression n) {
+        return n.op == Operation.TERM && n.coefficient.equals(BigInteger.ZERO);
+    }
+
+    private boolean isOne(SymbolicExpression n) {
+        return n.op == Operation.TERM && n.coefficient.equals(BigInteger.ONE) &&
+               n.numerator.equals(BigInteger.ONE) && n.denominator.equals(BigInteger.ONE);
+    }
+
+    // Symbolic differentiation that works with multiple variables
+    public SymbolicExpression differentiate(Map<String, SymbolicExpression> variableMap) {
+        switch (op) {
+            case TERM:
+                // Constants have zero derivative
+                return term(BigInteger.ZERO, BigInteger.ONE, BigInteger.ONE);
+            case VARIABLE:
+                // d(x)/dx = 1
+                if (variableMap.containsKey(variableName)) {
+                    return term(BigInteger.ONE, BigInteger.ONE, BigInteger.ONE);
+                } else {
+                    return term(BigInteger.ZERO, BigInteger.ONE, BigInteger.ONE);
+                }
+            case ADD: {
+                SymbolicExpression left = children.get(0).differentiate(variableMap);
+                SymbolicExpression right = children.get(1).differentiate(variableMap);
+                return add(left, right);
+            }
+            case SUBTRACT: {
+                SymbolicExpression left = children.get(0).differentiate(variableMap);
+                SymbolicExpression right = children.get(1).differentiate(variableMap);
+                return subtract(left, right);
+            }
+            case MULTIPLY: {
+                SymbolicExpression u = children.get(0);
+                SymbolicExpression v = children.get(1);
+                return add(
+                        multiply(u.differentiate(variableMap), v),
+                        multiply(u, v.differentiate(variableMap))
+                );
+            }
+            case DIVIDE: {
+                SymbolicExpression u = children.get(0);
+                SymbolicExpression v = children.get(1);
+                return divide(
+                        subtract(
+                                multiply(u.differentiate(variableMap), v),
+                                multiply(u, v.differentiate(variableMap))
+                        ),
+                        power(v, term(BigInteger.valueOf(2), BigInteger.ONE, BigInteger.ONE))
+                );
+            }
+            case POWER: {
+                SymbolicExpression base = children.get(0);
+                SymbolicExpression exp = children.get(1);
+
+                SymbolicExpression lnBase = log(base);
+                SymbolicExpression baseDeriv = base.differentiate(variableMap);
+                SymbolicExpression expDeriv = exp.differentiate(variableMap);
+
+                SymbolicExpression term1 = multiply(expDeriv, lnBase);
+                SymbolicExpression term2 = multiply(exp, divide(baseDeriv, base));
+
+                SymbolicExpression sum = add(term1, term2);
+
+                return multiply(this, sum); // f^g * (g' * ln(f) + g * f'/f)
+            }
+            case LOG: {
+                SymbolicExpression u = children.get(0);
+                return divide(u.differentiate(variableMap), u);
+            }
+            default:
+                throw new UnsupportedOperationException("Differentiation not implemented for op: " + op);
+        }
+    }
+
+    // Evaluate the symbolic expression for given variable values (Map)
     public double evaluate(Map<String, Double> variableValues) {
         switch (op) {
             case TERM:
@@ -201,115 +307,21 @@ public class SymbolicExpression {
         }
     }
 
-    // Evaluate the derivative for given variable values
-    public double evaluateDerivative(Map<String, Double> variableValues, String variableName) {
-        SymbolicExpression derivative = this.differentiate(variableName);
-        return derivative.evaluate(variableValues);
-    }
+    // Helper methods for simplification (same as before)...
 
-    // Simplify the expression to remove trivial operations
-    public SymbolicExpression simplify() {
-        switch (op) {
-            case TERM:
-            case VARIABLE:
-                return this;
-            case ADD: {
-                SymbolicExpression left = children.get(0).simplify();
-                SymbolicExpression right = children.get(1).simplify();
-                if (isZero(left)) return right;
-                if (isZero(right)) return left;
-                return add(left, right);
-            }
-            case SUBTRACT: {
-                SymbolicExpression left = children.get(0).simplify();
-                SymbolicExpression right = children.get(1).simplify();
-                if (isZero(right)) return left;
-                return subtract(left, right);
-            }
-            case MULTIPLY: {
-                SymbolicExpression left = children.get(0).simplify();
-                SymbolicExpression right = children.get(1).simplify();
-                if (isZero(left) || isZero(right)) return term(BigInteger.ZERO, BigInteger.ONE, BigInteger.ONE);
-                if (isOne(left)) return right;
-                if (isOne(right)) return left;
-                return multiply(left, right);
-            }
-            case DIVIDE: {
-                SymbolicExpression left = children.get(0).simplify();
-                SymbolicExpression right = children.get(1).simplify();
-                if (isZero(left)) return term(BigInteger.ZERO, BigInteger.ONE, BigInteger.ONE);
-                if (isOne(right)) return left;
-                return divide(left, right);
-            }
-            case POWER: {
-                SymbolicExpression base = children.get(0).simplify();
-                SymbolicExpression exp = children.get(1).simplify();
-                if (isZero(exp)) return term(BigInteger.ONE, BigInteger.ONE, BigInteger.ONE);
-                if (isOne(exp)) return base;
-                return power(base, exp);
-            }
-            case LOG: {
-                SymbolicExpression arg = children.get(0).simplify();
-                return log(arg);
-            }
-            default:
-                return this;
-        }
-    }
-
-    // Helper methods for simplification
-    private boolean isZero(SymbolicExpression n) {
-        return n.op == Operation.TERM && n.coefficient.equals(BigInteger.ZERO);
-    }
-
-    private boolean isOne(SymbolicExpression n) {
-        return n.op == Operation.TERM && n.coefficient.equals(BigInteger.ONE) &&
-               n.numerator.equals(BigInteger.ONE) && n.denominator.equals(BigInteger.ONE);
-    }
-
-    // Differentiation (same as before)...
-
-    // Symbolic gradient (same as before)...
-
-    // Convert expression to JSON
-    public JSONObject toJson() {
-        JSONObject json = new JSONObject();
-        json.put("operation", op.name());
-        json.put("coefficient", coefficient.toString());
-        json.put("numerator", numerator.toString());
-        json.put("denominator", denominator.toString());
-        if (variableName != null) json.put("variable", variableName);
-        if (!children.isEmpty()) {
-            JSONArray childrenArray = new JSONArray();
-            for (SymbolicExpression child : children) {
-                childrenArray.put(child.toJson());
-            }
-            json.put("children", childrenArray);
-        }
-        return json;
-    }
-
+    // Convert the expression to a JSON representation (same as before)
     @Override
     public String toString() {
-        switch (op) {
-            case TERM:
-                return coefficient + " * (" + numerator + "/" + denominator + ")";
-            case VARIABLE:
-                return variableName;
-            case ADD:
-                return "(" + children.get(0) + " + " + children.get(1) + ")";
-            case SUBTRACT:
-                return "(" + children.get(0) + " - " + children.get(1) + ")";
-            case MULTIPLY:
-                return "(" + children.get(0) + " * " + children.get(1) + ")";
-            case DIVIDE:
-                return "(" + children.get(0) + " / " + children.get(1) + ")";
-            case POWER:
-                return "(" + children.get(0) + " ^ " + children.get(1) + ")";
-            case LOG:
-                return "log(" + children.get(0) + ")";
-            default:
-                return "Unknown operation";
-        }
+        return switch (op) {
+            case TERM -> coefficient + " * (" + numerator + "/" + denominator + ")";
+            case VARIABLE -> variableName;
+            case ADD -> "(" + children.get(0) + " + " + children.get(1) + ")";
+            case SUBTRACT -> "(" + children.get(0) + " - " + children.get(1) + ")";
+            case MULTIPLY -> "(" + children.get(0) + " * " + children.get(1) + ")";
+            case DIVIDE -> "(" + children.get(0) + " / " + children.get(1) + ")";
+            case POWER -> "(" + children.get(0) + " ^ " + children.get(1) + ")";
+            case LOG -> "log(" + children.get(0) + ")";
+            default -> "Unknown operation";
+        };
     }
 }
